@@ -56,9 +56,13 @@ tabix -p vcf
 
 ## C-to-U Off-Target Analysis
 
+All code for this section is found in the off-tgt-analysis directory
+
 ### 1. Curating Reference Files
 
 #### Matching the Transcripts Fasta to the Primary Assembly GTF
 
-The downloaded transcripts fasta contains transcript entries that are not in the comprehensive primary assembly gtf, which can cause compatability issues with salmon for quantifying read counts. To fasta was filtered to match the gtf using the jupyter notebook 1_filter-transcript-fastagz-to-gtf.ipynb.
+The downloaded transcripts fasta contains transcript entries that are not in the comprehensive primary assembly gtf, which can cause compatability issues with salmon for quantifying read counts. The fasta was filtered to match the gtf using the jupyter notebook 1_filter-transcript-fastagz-to-gtf.ipynb.
+
+tsv files which map transcript ids to gene ids and gene names can then be produced with 
 
