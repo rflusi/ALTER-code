@@ -19,7 +19,7 @@ tabix -p gff
 tabix -p vcf
 ```
 
-Jupyter and Rmd files are uploaded with all outputs cleared, example outputs are given in the examples directory as html files but with the directory variables cleared.
+Jupyter and Rmd files are uploaded with all outputs cleared, example outputs are given in the notebook-examples directory as html files but with the directory variables cleared.
 
 # RNAseq Analysis
 
