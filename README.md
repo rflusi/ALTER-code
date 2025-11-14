@@ -54,15 +54,21 @@ tabix -p gff
 tabix -p vcf
 ```
 
-## C-to-U Off-Target Analysis
+## Curating Reference Files
 
-All code for this section is found in the off-tgt-analysis directory
+All code for this section is found in the curating-refs directory
 
-### 1. Curating Reference Files
-
-#### Matching the Transcripts Fasta to the Primary Assembly GTF
+### 1. Matching the Transcripts Fasta to the Primary Assembly GTF
 
 The downloaded transcripts fasta contains transcript entries that are not in the comprehensive primary assembly gtf, which can cause compatability issues with salmon for quantifying read counts. The fasta was filtered to match the gtf using the jupyter notebook 1_filter-transcript-fastagz-to-gtf.ipynb.
 
-tsv files which map transcript ids to gene ids and gene names can then be produced with 
+tsv files which map transcript ids to gene ids and gene names can then be produced with 2_map-transcripts-to-gene.ipynb
 
+### 2. Changing ClinVar vcf Contigs
+
+The vcf file for ClinVar uses different notation for chromosomes than GENCODE does, which leads to compatability issues. The contigs of the vcf file can be updated with 3_change-clinvar-contigs.sh which requires 3_clinvar-contig-map.txt, which maps the old contigs to the new.
+
+
+## C-to-U Off-Target Analysis
+
+All code for this section is found in the off-tgt-analysis directory
