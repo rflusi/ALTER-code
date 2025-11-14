@@ -3,6 +3,24 @@
 
 This repository contains jupyter scripts, python scripts, and R scripts used in the RNAseq and MARIA analyses shown in the paper.
 
+# General Notes
+
+Unless otherwise indicated, all reference data files were compressed with:
+
+```
+bgzip -l 9
+```
+
+and indexed with one of:
+
+```
+samtools faidx
+tabix -p gff
+tabix -p vcf
+```
+
+Jupyter and Rmd files are uploaded with all outputs cleared, example outputs are given in the examples directory as html files 
+
 # RNAseq Analysis
 
 ## Reference Data
@@ -22,7 +40,7 @@ The following references were also used at different points in the analysis:
 |dbsnp (NCBI)|vcf|138 (obtained from GATK resource bundle)|https://storage.cloud.google.com/genomics-public-data/resources/broad/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf|
 |ClinVar (NCBI)|vcf|2025-07-15|https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/weekly/clinvar_20250715.vcf.gz|
 
-Unless otherwise indicated, all reference datafiles were compressed with:
+Unless otherwise indicated, all reference data files were compressed with:
 
 ```
 bgzip -l 9
