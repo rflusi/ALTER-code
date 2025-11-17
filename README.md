@@ -71,4 +71,25 @@ The vcf file for ClinVar uses different notation for chromosomes than GENCODE do
 
 ## 2. C-to-U Off-Target Analysis
 
-All code for this section is found in the 2_off-tgt-analysis directory
+All code for this section is found in the 2_off-tgt-analysis directory. The starting point for the code provided here is the final variant table obtained after analysis of the raw read data. For details on read qc, alignment, and variant calling please see the Supplementary Information of the paper.
+
+### Annotation of Variant Table from GATK Analysis
+
+The final variant table from GATK is reformatted, and annotated with ClinVar data for variants found in ClinVar. The coding strand of each variant is inferred and sequences are altered to reflect the coding strand as required. Percentages of reads matching the reference nucleotide are calculated for all samples in all entries; percentages of reads matching the alternate nucleotide are calculated for samples matching the target SNP (C-to-U in this case). These analyses were performed with 
+4_var-table-annotation.ipynb
+
+### Identification of Off-Target Hits
+
+Off-target hits were defined as those variant calls meeting the following criteria, following the precedent of Huang, X. et al. Programmable C-to-U RNA editing using the human APOBEC3A deaminase. The EMBO Journal 39, e104741 (2020).
+
+1. var    - sample was called as a variant by HapplotypeCaller
+2. VOI    - sample variant matches the variant of interest
+3. DP     - read depth >= 20
+4. GQ     - depth by quality >=20 (corresponds to 99% confidence)
+5. non-wt - pct_ref in the matched wt sample is >99%, meaning the SNP was introduced by editing
+
+This analysis was performed with 5_off-tgt-hit-id.
+
+## Sequence-Context Analysis of Off-Target Hits
+
+For each of the final off-target hits, the transcript sequence context in a 21 base window centered on the off-target was pulled from genomic data. The lowest mfe secondary structure was calculated 
