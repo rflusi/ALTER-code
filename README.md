@@ -5,20 +5,6 @@ This repository contains jupyter notebooks, python scripts, and R scripts and rm
 
 # General Notes
 
-Unless otherwise indicated, all reference data files were compressed with:
-
-```
-bgzip -l 9
-```
-
-and indexed with one of:
-
-```
-samtools faidx
-tabix -p gff
-tabix -p vcf
-```
-
 Jupyter and Rmd files are uploaded with all outputs cleared, example outputs are given in the notebook-examples directory as html files but with the directory variables cleared.
 
 # RNAseq Analysis
