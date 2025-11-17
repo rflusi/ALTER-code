@@ -33,12 +33,27 @@ Genomic references were all based on GENCODE Human v48:
 |fasta|Genome sequence, primary assembly (GRCh38)|PRI|https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_48/GRCh38.primary_assembly.genome.fa.gz|
 |fasta|Transcript sequences|ALL|https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_48/gencode.v48.transcripts.fa.gz|
 
+For each sample transfected with plamid(s) the reference genome fasta, gtf, and transcript fasta for that sample were updated with the plasmid(s) sequences and information. Files with added data are located in ALTER-code/1_curating-refs/custom-ref-data
+
+|Genome Reference|Added to Genome Fasta|Added to gtf|Added to Transcript Fasta|
+|:-------:|:-------------:|:-------------:|:-------------:|
+|ALTER-transfection-control|pRFL462.fa|pRFL462.gtf|pRFL462-transcript.fa|
+|ALTER-4|pRFL382.fa|pRFL382.gtf|pRFL382-transcript.fa|
+|ALTER-master-ref|pRFL382-462.fa|pRFL382-462.gtf|pRFL382-462-transcript.fa|
+|A3A-overexpression and CURE "wtHEK"|CURE-reporter.fa|CURE-reporter.gtf|CURE-reporter-transcripts.fa|
+|CURE-C2|CURE-C2.fa|CURE-C2.gtf|CURE-C2-transcript.fa|
+|CURE-N|CURE-N.fa|CURE-N.gtf|CURE-N-transcript.fa|
+|RESCUE-S|RESCUE-S.fa|RESCUE-S.gtf|RESCUE-S-transcript.fa|
+|CURE-master-ref|CURE-all.fa|CURE-all.gtf|CURE-all-transcript.fa|
+
 The following references were also used at different points in the analysis:
 
 |Database/Resource|File Type|Release|Download Link|
 |:-:|:-:|:-:|:-:|
 |dbsnp (NCBI)|vcf|138 (obtained from GATK resource bundle)|https://storage.cloud.google.com/genomics-public-data/resources/broad/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf|
 |ClinVar (NCBI)|vcf|2025-07-15|https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/weekly/clinvar_20250715.vcf.gz|
+|Hallmark GSEA Gene Sets|gmt|v2025.1.Hs.symbols|https://www.gsea-msigdb.org/gsea/msigdb/download_file.jsp?filePath=/msigdb/release/2025.1.Hs/h.all.v2025.1.Hs.symbols.gmt
+|miRtarBase|csv|Homo sapiens|https://mirtarbase.cuhk.edu.cn/~miRTarBase/miRTarBase_2025/cache/download/10.0/hsa_MTI.csv
 
 Unless otherwise indicated, all reference data files were compressed with:
 
@@ -68,15 +83,25 @@ tsv files which map transcript ids to gene ids and gene names can then be produc
 
 The vcf file for ClinVar uses different notation for chromosomes than GENCODE does, which leads to compatability issues. The contigs of the vcf file can be updated with 3_change-clinvar-contigs.sh which requires 3_clinvar-contig-map.txt, which maps the old contigs to the new.
 
+## 2. DEG Analysis
 
-## 2. C-to-U Off-Target Analysis
+### DESeq2 Analysis
+
+Raw count data from salmon was padded with all transcripts in the master reference so that all samples would share a reference, 4_pad-salmon.py.
+
+DESeq2 was used to aggregate raw counts to the gene level, normalize counts, and perform DEG analysis. A ranked list of assayed genes was used in GSEA analysis, 5_deseq2.Rmd.
+
+## Analysis of Known miRNA Targets in DEGs
+
+The final DEG hits were cross referenced with miRtarBase to assess the rate of known miRNA targets in DEGs, 6_miRNA-tgts-in-degs
+
+## 3. C-to-U Off-Target Analysis
 
 All code for this section is found in the 2_off-tgt-analysis directory. The starting point for the code provided here is the final variant table obtained after analysis of the raw read data. For details on read qc, alignment, and variant calling please see the Supplementary Information of the paper.
 
 ### Annotation of Variant Table from GATK Analysis
 
-The final variant table from GATK is reformatted, and annotated with ClinVar data for variants found in ClinVar. The coding strand of each variant is inferred and sequences are altered to reflect the coding strand as required. Percentages of reads matching the reference nucleotide are calculated for all samples in all entries; percentages of reads matching the alternate nucleotide are calculated for samples matching the target SNP (C-to-U in this case). These analyses were performed with 
-4_var-table-annotation.ipynb
+The final variant table from GATK is reformatted, and annotated with ClinVar data for variants found in ClinVar. The coding strand of each variant is inferred and sequences are altered to reflect the coding strand as required. Percentages of reads matching the reference nucleotide are calculated for all samples in all entries; percentages of reads matching the alternate nucleotide are calculated for samples matching the target SNP (C-to-U in this case). These analyses were performed with 7_var-table-annotation.ipynb
 
 ### Identification of Off-Target Hits
 
@@ -88,8 +113,16 @@ Off-target hits were defined as those variant calls meeting the following criter
 4. GQ     - depth by quality >=20 (corresponds to 99% confidence)
 5. non-wt - pct_ref in the matched wt sample is >99%, meaning the SNP was introduced by editing
 
-This analysis was performed with 5_off-tgt-hit-id.
+This analysis was performed with 8_off-tgt-hit-id.
 
 ## Sequence-Context Analysis of Off-Target Hits
 
-For each of the final off-target hits, the transcript sequence context in a 21 base window centered on the off-target was pulled from genomic data. The lowest mfe secondary structure was calculated 
+For each of the final off-target hits, the transcript sequence context in a 21 base window centered on the off-target was pulled from genomic data. The lowest mfe secondary structure was calculated for each context window. Sequence and structure counts at each position in the window were tabulated. The context window was widened to 51 and the contexts were analyzed for guide sequence alignment. 9_off-tgt-seq-analysis.ipynb.
+
+## Rate of Off-Targets in DEGs
+
+The frequency of off-targets in DEGs was calculated with 10_DEG-edit-rate.py.
+
+# Tutorial Workflow
+
+See ALTER-code/5_tutorial-workflows/1_degs-off-tgts/TUTORIAL_READ_ME.md
