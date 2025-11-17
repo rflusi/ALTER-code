@@ -1,0 +1,10 @@
+CURE-split-gfp-1-10	custom	gene	1	5855	.	+	.	gene_name "CURE-split-gfp-1-10"; gene_id "CURE-split-gfp-1-10"
+CURE-split-gfp-1-10	custom	transcript	1572	4661	.	+	.	gene_name "CURE-split-gfp-1-10"; gene_id "CURE-split-gfp-1-10"; transcript_id "CURE-split-gfp-1-10"
+CURE-split-gfp-1-10	custom	exon	1572	2261	.	+	.	gene_name "CURE-split-gfp-1-10"; gene_id "CURE-split-gfp-1-10"; transcript_id "CURE-split-gfp-1-10"; exon_id "CURE-split-gfp-1-10.1"; exon_number 1
+CURE-split-gfp-1-10	custom	exon	3425	4661	.	+	.	gene_name "CURE-split-gfp-1-10"; gene_id "CURE-split-gfp-1-10"; transcript_id "CURE-split-gfp-1-10"; exon_id "CURE-split-gfp-1-10.2"; exon_number 2
+CURE-split-gfp-11	custom	gene	565	2539	.	+	.	gene_name "CURE-split-gfp-11"; gene_id "CURE-split-gfp-11"
+CURE-split-gfp-11	custom	transcript	565	2539	.	+	.	gene_name "CURE-split-gfp-11"; gene_id "CURE-split-gfp-11"; transcript_id "CURE-split-gfp-11"
+CURE-split-gfp-11	custom	exon	565	2539	.	+	.	gene_name "CURE-split-gfp-11"; gene_id "CURE-split-gfp-11"; transcript_id "CURE-split-gfp-11"; exon_id "CURE-split-gfp-11.1"; exon_number 1
+RESCUE-S	custom	gene	1	9861	.	+	.	gene_name "RESCUE-S"; gene_id "RESCUE-S"
+RESCUE-S	custom	transcript	923	5410	.	+	.	gene_name "RESCUE-S"; gene_id "RESCUE-S"; transcript_id "RESCUE-S"
+RESCUE-S	custom	exon	923	5410	.	+	.	gene_name "RESCUE-S"; gene_id "RESCUE-S"; transcript_id "RESCUE-S"; exon_id "RESCUE-S.1"; exon_number 1

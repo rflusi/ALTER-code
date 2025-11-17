@@ -1,0 +1,747 @@
+---
+title: "13_deseq2"
+output:
+  html_document:
+    df_print: paged
+---
+
+This rmd file performs:
+  - raw count import, and aggregation to gene level with tximport
+  - generation of various QC plots
+  - Count normalization and DEG analysis with DESeq2
+  - GSEA analysis with fgsea
+  - GO term enrichment analysis of DEGs with clusterProfiler
+  
+```{r}
+# Chunk 1: import statements
+suppressPackageStartupMessages({
+  library('DESeq2')
+  library('tximport')
+  library('dplyr')
+  library('ggplot2')
+  library('pheatmap')
+  library('RColorBrewer')
+  library('PoiClaClu')
+  library('glmpca')
+  library('apeglm')
+  library('ggrepel')
+  library('dplyr')
+  library('tidyr')
+  library('purrr')
+  library('svglite')
+  library('fgsea')
+  library('data.table')
+  library('msigdbr')
+  library('org.Hs.eg.db')
+  library('clusterProfiler')
+  library('AnnotationDbi')
+  library('enrichplot')
+  library('biomaRt')
+  library('ggrepel')
+  })
+```
+```{r}
+# Chunk 2: Manually defined variables
+# - this should be the only chunk that needs editing
+
+# full path to ALTER-code/5_tutorial-workflows/1_degs-off-tgts
+proj_dir <- ''
+# full path to transcript reference map
+transc_map_path <- ''
+# full path to GSEA Hallmark pathways file
+gmt_file_path <- ''
+
+# reference condition
+ref_condition <- '01_transfection.control' 
+# size of biological replicate groups
+smallest_group <- 3 
+
+#log2FC cutoff for DEG filtering
+deseq_fc_cutoff <- 1
+#padj cutoff for DEG filtering
+deseq_padj_cutoff <- 0.01
+#padj cutoff for GO enrichment analysis
+go_p_cutoff <- 0.01
+
+# gene ids and labels that you definitely want on final volcano plot
+force_label_ids <- c(
+  'ENSG00000166794.7',
+  'pRFL462_transfection-control',
+  'pRFL382_ALTER-4-PPIB-14L8'
+)
+force_label_labels <- c(
+  'PPIB',
+  'transfection control',
+  'ALTER-4'
+)
+```
+
+
+```{r}
+# Chunk 3: Automatically defined variables
+
+salmon_dir <- file.path(proj_dir, 'salmon-results')
+salmon_padded_dir <- file.path(salmon_dir, 'padded-results')
+deseq_dir <- file.path(salmon_dir, 'deseq2')
+
+# make results directories
+deseq_input_dir <- file.path(deseq_dir, '1_inputs')
+deseq_raw_counts_dir <- file.path(deseq_dir, '2_txi-counts')
+dir.create(deseq_raw_counts_dir, showWarnings = FALSE)
+deseq_results_dir <- file.path(deseq_dir, '3_results')
+dir.create(deseq_results_dir, showWarnings = FALSE)
+qc_plots_dir <- file.path(deseq_results_dir, '1_qc-plots')
+dir.create(qc_plots_dir, showWarnings = FALSE)
+res_table_dir <- file.path(deseq_results_dir, '2_result-tables')
+dir.create(res_table_dir, showWarnings = FALSE)
+deg_plots_dir <- file.path(deseq_results_dir, '3_deg-plots')
+dir.create(deg_plots_dir, showWarnings = FALSE)
+go_plots_dir <- file.path(deseq_results_dir, '4_go-plots')
+dir.create(go_plots_dir, showWarnings = FALSE)
+
+# import sample map and convert 'condition' to factor, print
+sample_map <- read.table(file.path(deseq_input_dir, 'sample-map.tsv'), header = TRUE, sep = '\t')
+sample_map$condition <- factor(sample_map$condition)
+print(sample_map)
+
+# create a list of salmon data file paths
+salmon_data_path_list <- file.path(salmon_padded_dir, sample_map$sample, 'quant.sf')
+names(salmon_data_path_list) <- sample_map$sample
+
+# read in transcript map
+tx2gene <- read.table(transc_map_path, header = TRUE,sep = '\t')
+```
+
+```{r}
+# Chunk 4: Import salmon data with tximport and inspect the result
+suppressMessages({
+  txi <- tximport(
+      salmon_data_path_list,
+      type = 'salmon',
+      tx2gene = tx2gene[c('transcript_id', 'gene_id')],
+      ignoreTxVersion = FALSE,
+  )
+})
+head(as.data.frame(txi$counts))
+```
+```{r}
+# Chunk 5: write raw count output tables
+# - terminal output will print an ordered list of gene names, order can be confirmed to match the tximport result above
+
+# functions
+calcConditionMeans <- function(condition_name, grp2items, df){
+    # Input     - condition_name: the name of a biological condition in the experiment
+    #           - df: a df with gene counts or other data
+    # Output    - a column of average values for the samples in the specified condition
+    cols <- intersect(grp2items[[condition_name]], names(df))
+    if (length(cols) == 0) return(rep(NA_real_, nrow(df)))
+    rowMeans(df[, cols, drop = FALSE], na.rm = TRUE)
+}
+
+ConditionMeanColumns <- function(df, sample_map, prefix = 'mean_') {
+    # Input     - df: a df with gene counts or other data
+    #           - sample_map: a df with rows sample and condition that maps individual samples to a biological condition
+    #           - prefix: the prefix for the mean column titles
+    # Output    - the df with columns added for the mean value of each biological condition
+    grp2items <- split(sample_map$sample, sample_map$condition)
+    avg_cols <- lapply(names(grp2items), calcConditionMeans, grp2items, df)
+    avg_cols <- as.data.frame(avg_cols, optional = TRUE, stringsAsFactors = FALSE)
+    names(avg_cols) <- paste0(prefix, names(grp2items))
+    avg_df <- cbind(df, avg_cols)
+}
+
+# ---- make an ordered gene_names list to match txi --------
+# get gene ids in count matrix
+gene_ids_in_txi <- rownames(txi$counts)
+# get unique gene_id <-> gene_name pairings in the transcript-gene map
+gene_name_map <- unique(tx2gene[, c('gene_id', 'gene_name')])
+# convert the gene_ids to the row names so they can be used to pull the gene_names
+rownames(gene_name_map) <- gene_name_map$gene_id
+# use the gene_ids from txi to pull the relevant gene_names
+gene_names_ordered <- gene_name_map[gene_ids_in_txi, 'gene_name', drop = FALSE]
+# check against txi in terminal output to confirm matching order
+print('gene_names_ordered: check against txi in terminal output to confirm matching order')
+head(gene_names_ordered)
+
+# ---- write txi gene-level aggregated raw counts to a tsv with gene names --------
+# convert count matrix to df for writing
+counts_df <- as.data.frame(txi$counts)
+# make sure gene_ids are a column, not just row names for writing
+counts_df$gene_id <- rownames(counts_df)
+# add gene_names that were already ordered to match the count matrix
+counts_df$gene_name <- gene_names_ordered$gene_name
+# save a list of sample cols
+sample_cols <- c(setdiff(names(counts_df), c('gene_id', 'gene_name')))
+# add average value columns for each biological condition
+print_df <- ConditionMeanColumns(df = counts_df, sample_map = sample_map)
+print_df$mean <- rowMeans(print_df[, sample_cols],na.rm = TRUE)
+mean_cols <- setdiff(names(print_df), c('gene_name', 'gene_id', sample_cols))
+# reorder columns for printing
+print_df <- print_df[, c('gene_name', 'gene_id', mean_cols, sample_cols)]
+# write tsv file of gene-level raw counts
+write.table(print_df[order(print_df$mean,decreasing = TRUE), ], 
+            file = file.path(deseq_raw_counts_dir, 'gene-level-raw-counts.tsv'), 
+            sep = '\t', 
+            row.names = FALSE, 
+            quote = FALSE)
+
+# --- Write a second TSV with a pseudocount of 1 added for plotting ---
+counts_plus_df <- counts_df
+counts_plus_df[, sample_cols] <- counts_plus_df[, sample_cols] + 1
+counts_plus_df <- ConditionMeanColumns(df = counts_plus_df, sample_map = sample_map)
+counts_plus_df$mean <- rowMeans(counts_plus_df[, sample_cols],na.rm = TRUE)
+counts_plus_df <- counts_plus_df[, c('gene_name', 'gene_id', mean_cols, sample_cols)]
+write.table(counts_plus_df[order(counts_plus_df$mean,decreasing = TRUE), ], 
+            file = file.path(deseq_raw_counts_dir, 'gene-level-raw-pseudocounts.tsv'), 
+            sep = '\t', 
+            row.names = FALSE, 
+            quote = FALSE)
+```
+```{r}
+# Chunk 6: create the DESeqDataSet
+
+# ---create deseq2 object ---
+# The 'design' formula tells DESeq2 which variable in sample_map
+# to test for differences. In this case, it's 'condition'.
+# The '~' symbol means "modeled by".
+dds <- DESeqDataSetFromTximport(txi,
+                                colData = sample_map,
+                                design = ~condition)
+# add gene names to dds
+mcols(dds)$gene_name <- gene_names_ordered$gene_name
+
+# inspect dds
+# will show us the dimensions (number of genes x number of samples) and a summary of the data.
+print(dds)
+cat('\n')
+paste0('Number of genes before count filtering:    ', nrow(dds))
+head(as.data.frame(assay(dds)))
+
+# ---filter for minimum acceptable depth (10) ---
+keep <- rowSums(counts(dds) >= 10) >= smallest_group
+dds <- dds[keep,]
+paste0('Number of genes after count filtering:     ', nrow(dds))
+head(as.data.frame(assay(dds)))
+```
+```{r, cache=FALSE}
+# Chunk 7: plot distance heatmaps
+
+# variance stabilizing transformation
+vsd <- vst(dds, blind = FALSE)
+sampleDists <- dist(t(assay(vsd)))
+
+# plot geometric distance heatmap
+print('Geometric Distance:')
+sampleDists
+cat('\n')
+
+sampleDistMatrix <- as.matrix( sampleDists )
+rownames(sampleDistMatrix) <- paste( vsd$sample, vsd$condition, sep = ' - ' )
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, 'Blues')) )(255)
+geo_dis_heat <- pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         col = colors)
+print(geo_dis_heat)
+
+# plot poisson distance heatmap
+poisd <- PoissonDistance(t(counts(dds)))
+samplePoisDistMatrix <- as.matrix( poisd$dd )
+print('Poisson Distance:')
+samplePoisDistMatrix
+cat('\n')
+
+rownames(samplePoisDistMatrix) <- paste( dds$sample, dds$condition, sep=' - ' )
+colnames(samplePoisDistMatrix) <- NULL
+pois_dis_heat <- pheatmap(samplePoisDistMatrix,
+         clustering_distance_rows = poisd$dd,
+         clustering_distance_cols = poisd$dd,
+         col = colors)
+print(pois_dis_heat)
+
+# export plots to svgs
+out_path <- file.path(qc_plots_dir, 'geo-dist-heatmap.svg')
+ggsave(file = out_path, plot = geo_dis_heat)
+out_path <- file.path(qc_plots_dir, 'pois-dist-heatmap.svg')
+ggsave(file = out_path, plot = pois_dis_heat)
+
+```
+```{r, cache=FALSE}
+# Chunk 8: generalized PCA plot
+set.seed(830)
+gpca <- glmpca(counts(dds), L = 2, ctl = list(maxIter = 5000, method = 'adam'))
+gpca.dat <- gpca$factors
+gpca.dat$condition <- dds$condition
+gpca.dat$sample <- dds$sample
+
+glmpca_plot <- ggplot(gpca.dat, aes(x = dim1, y = dim2, shape = condition, color = sample)) +
+                theme(
+                 text = element_text(family = 'Arial', size = 12),
+                 legend.text = element_text(size = 12),
+                 legend.title = element_text(size = 12)
+                ) +
+                geom_point(size =3) + xlab('dimension 1') + ylab('dimension 2') +
+                coord_fixed(ratio = 1, xlim = c(-30, 30), ylim = c(-30, 30)) +
+                labs(color = 'Sample', shape = 'Condition')
+  
+
+out_path <- file.path(qc_plots_dir, 'glmpca.svg')
+ggsave(file = out_path, plot = glmpca_plot, height = 16.5, width = 16.5, units = 'cm')
+print(glmpca_plot)
+```
+
+```{r}
+# Chunk 9: Performing DEG analysis
+
+# Run DESeq2 analysis
+suppressMessages({
+  dds <- DESeq(dds)
+})
+
+cat('dds:\n\n')
+dds
+cat('\n\n')
+
+# generate pairwise comparisons between conditions
+condition_lvls <- levels(dds$condition)
+condition_combn = combn(condition_lvls, 2)
+cat('condition combinations:\n\n')
+condition_combn
+cat('\n\n')
+
+
+# store comparison results in a list named as '<condition1>_vs_<condition2>
+results_list <- list()
+
+for (i in 1:ncol(condition_combn)) {
+  if (condition_combn[1,i] == ref_condition){
+    res <- results(dds, contrast = c('condition', condition_combn[2,i], condition_combn[1,i]))
+    comparison_name = paste0(condition_combn[2,i], '_vs_', condition_combn[1,i])
+    cat(paste('Comparison: ', comparison_name, '\n'))
+    summary(res)
+    results_list[[comparison_name]] <- res
+  }
+}
+```
+```{r}
+# Chunk 10: Write table outputs from DESeq analysis
+
+# --- Normalized counts table ---
+# the DESeq() function in the previous cell calculated the size factors for normalization.
+# access the normalized counts using the counts() function with the argument `normalized = TRUE`.
+normalized_counts <- counts(dds, normalized = TRUE)
+# convert to a data frame for easier handling and to add our gene identifiers.
+normalized_counts_df <- as.data.frame(normalized_counts)
+# Add the gene_id (from the row names) and the gene_name (from the rowData)
+normalized_counts_df$gene_id <- rownames(normalized_counts_df)
+normalized_counts_df$gene_name <- mcols(dds)$gene_name
+# make a copy with + 1 pseudocounts for plotting
+norm_pseudocounts_df <- normalized_counts_df
+norm_pseudocounts_df[, sample_cols] <- norm_pseudocounts_df[, sample_cols] + 1
+# Calculate average values in new columns
+normalized_counts_df <- ConditionMeanColumns(df = normalized_counts_df, sample_map = sample_map)
+normalized_counts_df$mean <- rowMeans(normalized_counts_df[,c(sample_cols)],na.rm = TRUE)
+norm_pseudocounts_df <- ConditionMeanColumns(df = norm_pseudocounts_df, sample_map = sample_map)
+norm_pseudocounts_df$mean <- rowMeans(norm_pseudocounts_df[,c(sample_cols)],na.rm = TRUE)
+# Reorder the columns to put the identifiers first
+normalized_counts_df <- normalized_counts_df[, c('gene_id', 'gene_name', mean_cols, sample_cols)]
+norm_pseudocounts_df <- norm_pseudocounts_df[, c('gene_id', 'gene_name', mean_cols, sample_cols)]
+# sort norm counts by mean overall count
+final_norm_count_table <- normalized_counts_df[order(normalized_counts_df$mean, decreasing = TRUE), ]
+final_norm_pseudocount_table <- norm_pseudocounts_df[order(norm_pseudocounts_df$mean, decreasing = TRUE), ]
+
+# output comparison result tables and add lfc tables to a list named by comparison
+final_lfc_table_list <- list()
+for (i in 1:ncol(condition_combn)) {
+  if (condition_combn[1,i] == ref_condition){
+    comparison_name = paste0(condition_combn[2,i], '_vs_', condition_combn[1,i])
+    comparison_coef <- paste0('condition_', comparison_name)
+    cat(paste0('Writing outputs for ', comparison_name, '...\n'))
+    # --- LFC results table ---
+    # Start with the shrunken LFC results for accuracy
+    suppressMessages({
+      res_shrunken <- lfcShrink(dds, coef = comparison_coef, type='apeglm')
+    })
+    # Convert the results object to a data frame
+    res_shrunken_df <- as.data.frame(res_shrunken)
+    # Add gene names
+    res_shrunken_df$gene_name <- mcols(dds)$gene_name
+    # add the base mean (average expression) column from the original results
+    res_shrunken_df$baseMean <- results(dds)$baseMean
+    # add gene_id as a column instead of just as the row names
+    res_shrunken_df$gene_id <- rownames(res_shrunken_df)
+    
+    # --- Write output tsvs ---
+    # Reorder the columns to put the identifiers first
+    res_shrunken_df <- res_shrunken_df[, c('gene_id', 'gene_name', 'log2FoldChange', 'padj', 'baseMean', 'lfcSE', 'pvalue')]
+    # sort lfc table by padj
+    final_lfc_table <- res_shrunken_df[order(res_shrunken_df$padj, decreasing = FALSE), ]
+    
+    # log fold changes
+    write.table(final_lfc_table, 
+                file = file.path(res_table_dir, paste0(condition_combn[2,i], '_', 'de-results.tsv')), 
+                sep = '\t', 
+                row.names = FALSE,
+                quote = FALSE)
+    
+    # log fold changes without padj = NA
+    write_table <- subset(final_lfc_table, !(is.na(padj)))
+    write.table(write_table, 
+                file = file.path(res_table_dir, paste0(condition_combn[2,i], '_', 'de-results-drop-na.tsv')), 
+                sep = '\t', 
+                row.names = FALSE,
+                quote = FALSE)
+    
+    # log fold changes filtered for significance
+    write.table(subset(final_lfc_table, padj < deseq_padj_cutoff & abs(log2FoldChange) > deseq_fc_cutoff), 
+                file = file.path(res_table_dir, paste0(condition_combn[2,i], '_', 'de-results-padj', deseq_padj_cutoff, '-lfc', deseq_fc_cutoff, '.tsv')), 
+                sep = '\t', 
+                row.names = FALSE,
+                quote = FALSE)
+    
+    final_lfc_table_list[[comparison_name]] <- final_lfc_table
+  }
+}
+
+# normalized counts
+write.table(final_norm_count_table, 
+            file = file.path(res_table_dir, 'norm-gene-counts.tsv'), 
+            sep = '\t', 
+            row.names = FALSE,
+            quote = FALSE)
+
+# normalized pseudocounts
+write.table(final_norm_pseudocount_table, 
+            file = file.path(res_table_dir, 'norm-gene-pseudocounts.tsv'), 
+            sep = '\t', 
+            row.names = FALSE,
+            quote = FALSE)
+```
+```{r}
+# Chunk 11: Create Volcano Plots
+
+for (i in 1:ncol(condition_combn)) {
+  if (condition_combn[1,i] == ref_condition){
+    comparison_name = paste0(condition_combn[2,i], '_vs_', condition_combn[1,i])
+    comparison_coef <- paste0('condition_', comparison_name)
+    print(comparison_name)
+    # --- Prepare the data for plotting ---
+    # Start with lfc dataframe generated in cell 9
+    res_to_plot <- final_lfc_table_list[[comparison_name]]
+    res_to_plot <- subset(res_to_plot, !(is.na(padj)))
+    # Add a column to specify whether a gene is non-significant, up, or down
+    res_to_plot$diffexpressed <- 'within cutoffs'
+    # if log2FoldChange > <fc_cutoff_variable> and padj < <padj_cutoff_variable>, set as 'UP'
+    res_to_plot$diffexpressed[res_to_plot$log2FoldChange > deseq_fc_cutoff & res_to_plot$padj < deseq_padj_cutoff] <- 'up-regulated'
+    # if log2FoldChange < -<fc_cutoff_variable> and padj < <padj_cutoff_variable>, set as 'DOWN'
+    res_to_plot$diffexpressed[res_to_plot$log2FoldChange < -deseq_fc_cutoff & res_to_plot$padj < deseq_padj_cutoff] <- 'down-regulated'
+    res_to_plot$diffexpressed <- factor(res_to_plot$diffexpressed, levels = c('up-regulated', 'down-regulated', 'within cutoffs'))
+    
+    # Add a column to label the most significant hits and the forced labels indicated at the beginning
+    res_to_plot[force_label_ids, 'gene_name'] <- force_label_labels
+    res_to_plot$gene_label <- ifelse(res_to_plot$diffexpressed != 'within cutoffs', res_to_plot$gene_name, '')
+    res_to_plot$plot_label <- ''
+    res_to_plot <- res_to_plot[order(res_to_plot$padj), ]
+    res_to_plot$plot_label[1:10] <- res_to_plot$gene_label[1:10]
+    res_to_plot <- res_to_plot[order(res_to_plot$log2FoldChange, decreasing = TRUE), ]
+    res_to_plot$plot_label[1:8] <- res_to_plot$gene_label[1:8]
+    res_to_plot <- res_to_plot[order(res_to_plot$log2FoldChange, decreasing = FALSE), ]
+    res_to_plot$plot_label[1:5] <- res_to_plot$gene_label[1:5]
+    res_to_plot[force_label_ids, 'plot_label'] <- res_to_plot[force_label_ids, 'gene_label']
+    
+    
+    # --- Create the plot using ggplot2 ---
+    # x-axis is log2FoldChange, y-axis is the -log10 of the adjusted p-value.
+    
+    label_counts <- table(res_to_plot$diffexpressed)
+    new_labels <- c(
+        paste0('up-regulated (n=', label_counts['up-regulated'], ')'),
+        paste0('down-regulated (n=', label_counts['down-regulated'], ')'),
+        paste0('within cutoffs (n=', label_counts['within cutoffs'], ')')
+    )
+    print(new_labels)
+    
+    volcano_plot <- ggplot(data = res_to_plot, aes(x = log2FoldChange, y = -log10(padj), col = diffexpressed, label = plot_label)) +
+        geom_point(size=0.5) +
+        theme_minimal(base_family = 'Arial') +
+        # Add labels using ggrepel
+        geom_text_repel(max.overlaps = 400, size = 2, show.legend = FALSE, point.padding = 0.1, box.padding = 0.1) +
+        scale_color_manual(
+            values = c('down-regulated' = '#4486AB', 'within cutoffs' = 'grey', 'up-regulated' = '#009e74'),
+            labels = new_labels
+        ) +
+        coord_cartesian(xlim = c(-10, 10), ylim = c(-5, 125)) +
+        xlab('Log2 Fold Change') + 
+        ylab('-Log10 Adjusted P-value') +
+        labs(color = NULL) +
+        theme(
+            text = element_text(family = 'Arial'),
+            axis.title = element_text(size = 6),
+            axis.text.x = element_text(size = 6),
+            axis.text.y = element_text(size = 6),
+            legend.text = element_text(size = 6),
+            legend.margin = margin(l = -10, unit = 'pt')
+        )
+    print(volcano_plot)
+    
+    volc_file <- file.path(deg_plots_dir, paste0(condition_combn[2,i], '-volcano.svg'))
+    ggsave(file = volc_file, plot = volcano_plot, width = 16.5, height = 10.2078, units = 'cm')
+  }
+}
+```
+```{r}
+# Chunk 12: DEG heatmap of normalized-by-gene expression in the top 50 most significant DEG hits
+
+for (i in 1:ncol(condition_combn)) {
+  if (condition_combn[1,i] == ref_condition){
+    comparison_name = paste0(condition_combn[2,i], '_vs_', condition_combn[1,i])
+    comparison_coef <- paste0('condition_', comparison_name)
+    print(comparison_name)
+    
+    # --- Select the top genes ---
+    deg_results_for_heatmap <- final_lfc_table_list[[comparison_name]]
+    top_genes <- head(deg_results_for_heatmap, 50)$gene_id
+    
+    # --- Get the normalized expression data for these top genes ---
+    vst_counts <- assay(vsd)
+    top_genes_vst_counts <- vst_counts[top_genes, ]
+    
+    # --- Inspect the data ---
+    print(head(top_genes_vst_counts))
+    
+    # ---  Scale the data by row (gene) ---
+    # scaling converts the values in each row to a Z-score
+    scaled_vst_counts <- t(scale(t(top_genes_vst_counts)))
+    
+    # --- Create a data frame for column annotations ---
+    df_for_annotation <- as.data.frame(colData(dds)[,c('condition', 'sample')])
+    
+    # --- Generate the plot using pheatmap ---
+    # This function has many options to customize the appearance.
+    deg_heat <- pheatmap(scaled_vst_counts, 
+                 annotation_col = df_for_annotation,             # Data frame to label the columns
+                 show_rownames = FALSE,                          # Hides the long Ensembl IDs for clarity
+                 cluster_rows = TRUE,                            # Clusters the genes based on expression patterns
+                 cluster_cols = TRUE,                            # Clusters the samples based on expression patterns
+                 fontsize = 12)
+    
+    out_file <- file.path(deg_plots_dir, paste0(condition_combn[2,i], '-deg-heat.svg'))
+    ggsave(file = out_file, plot = deg_heat, width = 8.25*2, height = 5.1039*2, units = 'cm')
+  }
+}
+    
+```
+
+```{r}
+# Chunk 13: GSEA analysis
+
+fgsea_result_list = list()
+ranked_genes_list = list()
+for (i in 1:ncol(condition_combn)) {
+  if (condition_combn[1,i] == ref_condition){
+    comparison_name = paste0(condition_combn[2,i], '_vs_', condition_combn[1,i])
+    comparison_coef <- paste0('condition_', comparison_name)
+    print(comparison_name)
+    
+    # --- Create a ranked list of all genes ---
+    full_results_df <- as.data.frame(results_list[[comparison_name]])
+    
+    # Remove any na values for log2FC or padj
+    full_results_df <- full_results_df[!is.na(full_results_df$log2FoldChange), ]
+    full_results_df <- full_results_df[!is.na(full_results_df$padj), ]
+
+    # Create dataframe with only gene_id, gene_name, an log2FC, which we will rank on
+    gene_rank_df <- data.frame(
+        gene_id = rownames(full_results_df),
+        stat = full_results_df$log2FoldChange
+    )
+    gene_rank_df$gene_name <- mcols(dds)$gene_name[match(gene_rank_df$gene_id, rownames(mcols(dds)))]
+
+    # Remove unnamed or duplicate genes
+    gene_rank_df <- gene_rank_df[!is.na(gene_rank_df$gene_name), ]
+    gene_rank_df <- gene_rank_df[!duplicated(gene_rank_df$gene_name), ]
+
+    # Create the final ranked vector named by gene name, the head and tail are printed for inspection
+    ranked_genes <- gene_rank_df$stat
+    names(ranked_genes) <- gene_rank_df$gene_name
+    ranked_genes <- sort(ranked_genes, decreasing = TRUE)
+    print(as.data.frame(ranked_genes))
+    print(tail(as.data.frame(ranked_genes)))
+
+    # --- Load the gene set database ---
+    # From the GMT file specified in variables
+    pathways <- gmtPathways(gmt_file_path)
+
+    # --- Run the fgsea algorithm ---
+    # Set a seed for reproducibility
+    set.seed(42)
+    fgsea_results <- fgsea(pathways = pathways,
+                           stats    = ranked_genes)
+    # print most significant results
+    print(fgsea_results[order(padj), ])
+
+    # --- Save the GSEA results to a file ---
+    out_path <- file.path(res_table_dir, paste0(condition_combn[2, i], '-fgsea.tsv'))
+    fwrite(fgsea_results, file=out_path, sep='\t', sep2=c('', ' ', ''))
+
+    fgsea_result_list[[comparison_name]] <- fgsea_results
+    ranked_genes_list[[comparison_name]] <- ranked_genes
+  }
+}
+```
+```{r}
+# Chunk 14: GO Analysis of DEG Sets
+
+# Functions
+manuscript_dotplot <- function(go_simple) {
+  # Input     - go_simple: go clustering results
+  # Output    - prints and returns a GO dot plot
+  go_dp_test <- dotplot(go_simple, showCategory=20)
+  go_dp_test <- go_dp_test + scale_fill_gradientn(colors = c('#0073b2', '#cc79a6'))
+  go_dp_test <- go_dp_test + theme(
+    panel.grid = element_blank(),
+    text = element_text(family = 'Arial', size = 15),
+    
+    axis.title.x = element_text(size = 15),
+    axis.text.x = element_text(size = 15),
+    
+    axis.text.y = element_text(size = 15),
+    
+    legend.text = element_text(size = 15)
+  )
+  print(go_dp_test)
+  return(go_dp_test)
+}
+
+
+for (i in 1:ncol(condition_combn)) {
+  if (condition_combn[1,i] == ref_condition){
+    comparison_name = paste0(condition_combn[2,i], '_vs_', condition_combn[1,i])
+    comparison_coef <- paste0('condition_', comparison_name)
+    print(comparison_name)
+    
+    deg_results <- final_lfc_table_list[[comparison_name]]
+    
+    # --- Prepare Gene Lists ---
+    # Filter for significant DEGs (using standard cutoffs)
+    sig_degs <- subset(deg_results, padj < deseq_padj_cutoff & abs(log2FoldChange) > deseq_fc_cutoff)
+
+    # Split into up and downregulated degs and de-version the gene_ids
+    up_regulated_degs <- sub('\\..*$', '', sig_degs[sig_degs$log2FoldChange > deseq_fc_cutoff, ]$gene_id)
+    down_regulated_degs <- sub('\\..*$', '', sig_degs[sig_degs$log2FoldChange < -deseq_fc_cutoff, ]$gene_id)
+
+    # Define the 'universe' of all tested genes (also de-versioned)
+    gene_universe <- sub('\\..*$', '', rownames(dds))
+    
+    # --- Convert Ensembl IDs to Entrez IDs ---
+    # Use the mapIds function from AnnotationDbi
+    up_degs_entrez <- mapIds(org.Hs.eg.db, keys = up_regulated_degs, 
+                             column = 'ENTREZID', keytype = 'ENSEMBL', multiVals = 'first')
+    cat(up_regulated_degs)
+    down_degs_entrez <- mapIds(org.Hs.eg.db, keys = down_regulated_degs, 
+                               column = 'ENTREZID', keytype = 'ENSEMBL', multiVals = 'first')
+    universe_entrez <- mapIds(org.Hs.eg.db, keys = gene_universe, 
+                              column = 'ENTREZID', keytype = 'ENSEMBL', multiVals = 'first')
+    
+    # Remove any NA values that resulted from the mapping
+    up_degs_entrez <- na.omit(up_degs_entrez)
+    down_degs_entrez <- na.omit(down_degs_entrez)
+    universe_entrez <- na.omit(universe_entrez)
+    
+    # --- Run GO Enrichment Analysis (ORA) ---
+    go_up_bp <-   enrichGO(gene  = up_regulated_degs,
+                    universe      = gene_universe,
+                    OrgDb         = org.Hs.eg.db,
+                    keyType       = 'ENSEMBL',
+                    ont           = 'BP',
+                    pAdjustMethod = 'BH',
+                    pvalueCutoff  = go_p_cutoff,
+                    qvalueCutoff  = 0.10)
+    
+    go_up_cc <-   enrichGO(gene  = up_regulated_degs,
+                    universe      = gene_universe,
+                    OrgDb         = org.Hs.eg.db,
+                    keyType       = 'ENSEMBL',
+                    ont           = 'CC',
+                    pAdjustMethod = 'BH',
+                    pvalueCutoff  = go_p_cutoff,
+                    qvalueCutoff  = 0.10)
+    
+    go_up_mf <-   enrichGO(gene  = up_regulated_degs,
+                    universe      = gene_universe,
+                    OrgDb         = org.Hs.eg.db,
+                    keyType       = 'ENSEMBL',
+                    ont           = 'MF',
+                    pAdjustMethod = 'BH',
+                    pvalueCutoff  = go_p_cutoff,
+                    qvalueCutoff  = 0.10)
+    
+    go_down_bp <- enrichGO(gene        = down_regulated_degs,
+                    universe    = gene_universe,
+                    OrgDb       = org.Hs.eg.db,
+                    keyType     = 'ENSEMBL',
+                    ont         = 'BP',
+                    pAdjustMethod = 'BH',
+                    pvalueCutoff  = go_p_cutoff,
+                    qvalueCutoff  = 0.10)
+    
+    go_down_cc <- enrichGO(gene        = down_regulated_degs,
+                    universe    = gene_universe,
+                    OrgDb       = org.Hs.eg.db,
+                    keyType     = 'ENSEMBL',
+                    ont         = 'CC',
+                    pAdjustMethod = 'BH',
+                    pvalueCutoff  = go_p_cutoff,
+                    qvalueCutoff  = 0.10)
+    
+    go_down_mf <- enrichGO(gene        = down_regulated_degs,
+                    universe    = gene_universe,
+                    OrgDb       = org.Hs.eg.db,
+                    keyType     = 'ENSEMBL',
+                    ont         = 'MF',
+                    pAdjustMethod = 'BH',
+                    pvalueCutoff  = go_p_cutoff,
+                    qvalueCutoff  = 0.10)
+    
+    # --- Visualize the Results ---
+    # First, simplify the results to remove redundant
+    go_up_bp_simple <- simplify(go_up_bp)
+    go_up_cc_simple <- simplify(go_up_cc)
+    go_up_mf_simple <- simplify(go_up_mf)
+    
+    go_down_bp_simple <- simplify(go_down_bp)
+    go_down_cc_simple <- simplify(go_down_cc)
+    go_down_mf_simple <- simplify(go_down_mf)
+    
+    # Create the dot plots
+    padj_grad_colors <- c('#009e74', '#0073b2')
+    
+    if (length(go_up_bp_simple@result$p.adjust) > 0){
+        go_dotplot <- manuscript_dotplot(go_up_bp_simple)
+        ggsave(file.path(go_plots_dir, 'upreg-DEGs-bio-proc.svg'), go_dotplot, limitsize = TRUE)
+    }
+    if (length(go_up_cc_simple@result$p.adjust) > 0){
+      go_dotplot <- manuscript_dotplot(go_up_cc_simple)
+      ggsave(file.path(go_plots_dir, 'upreg-DEGs-cell-compo.svg'), go_dotplot, limitsize = TRUE)
+    }
+    if (length(go_up_mf_simple@result$p.adjust) > 0){
+      go_dotplot <- manuscript_dotplot(go_up_mf_simple)
+      ggsave(file.path(go_plots_dir, 'upreg-DEGs-mol-funct.svg'), go_dotplot, limitsize = TRUE)
+    }
+
+    if (length(go_down_bp_simple@result$p.adjust) > 0){
+      go_dotplot <- manuscript_dotplot(go_down_bp_simple)
+      ggsave(file.path(go_plots_dir, 'downreg-DEGs-bio-proc.svg'), go_dotplot, limitsize = TRUE)
+    }
+    if (length(go_down_cc_simple@result$p.adjust) > 0){
+      go_dotplot <- manuscript_dotplot(go_down_cc_simple)
+      ggsave(file.path(go_plots_dir, 'downreg-DEGs-cell-compo.svg'), go_dotplot, limitsize = TRUE)
+    }
+    if (length(go_down_mf_simple@result$p.adjust) > 0){
+      go_dotplot <- manuscript_dotplot(go_down_mf_simple)
+      ggsave(file.path(go_plots_dir, 'downreg-DEGs-mol-func.svg'), go_dotplot, limitsize = TRUE)
+    }
+  }
+}
+```
