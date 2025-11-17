@@ -1,7 +1,7 @@
 
 # Code Availability for Programed Manipulation of RNA Targets using Human Argonaute 2
 
-This repository contains jupyter scripts, python scripts, and R scripts used in the RNAseq and MARIA analyses shown in the paper.
+This repository contains jupyter notebooks, python scripts, and R scripts and rmd files used in the RNAseq and MARIA analyses shown in the paper.
 
 # General Notes
 
