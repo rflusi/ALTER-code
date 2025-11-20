@@ -1,0 +1,138 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This notebook will go through the process of de-immunizing a given ALTER sequence.
+For this vignette, we will use the ALTER4M-6GGS sequence and de-immunize the mutant
+residues within the native proteins to show how the full editor can be de-immunized.
+
+
+Set this path to your working directory
+```{r}
+filePath = 
+```
+
+
+Loading in reference sequence (ALTER-4M) and marking non-human regions (GGS Linker), mutant positions (Y132D, F470V, F505V, Q633R), and junctions
+```{r}
+sequence <- "MEASPASGPRHLMDPHIFTSNFNNGIGRHRTYLCYEVERLDNGTSVKMDQHRGFLHNQAKNLLCGFYGRHAELRFLDLVPSLQLDPAQIYRVTWFISWSPCFSWGCAGEVRAFLQENTHVRLRIFAARIYDGDPLYKEALQMLRDAGAQVSIMTYDEFKHCWDTFVDHQGCPFQPWDGLDEHSQALSGRLRAILQNQGNCLCGGSGGSGLSGGSGCSMYSGAGPALAPPAPPPPIQGYAFKPPPRPDFGTSGRTIKLQANFFEMDIPKIDIYHYELDIKPEKCPRRVNREIVEHMVQHFKTQIFGDRKPVFDGRKNLYTAMPLPIGRDKVELEVTLPGEGKDRIFKVSIKWVSCVSLQALHDALSGRLPSVPFETIQALDVVMRHLPSMRYTPVGRSFFTASEGCSNPLGGGREVWFGFHQSVRPSLWKMMLNIDVSATAFYKAQPVIEFVCEVLDFKSIEEQQKPLTDSQRVKFTKEIKGLKVEITHCGQMKRKYRVCNVTRRPASHQTFPLQQESGQTVECTVAQYFKDRHKLVLRYPHLPCLQVGQEQKHTYLPLEVCNIVAGQRCIKKLTDNQTSTMIRATARSAPDRQEEISKLMRSASFNTDPYVREFGIMVKDEMTDVTGRVLQPPSILYGGRNKAIATPVQGVWDMRNKQFHTGIEIKVWAIACFAPQRQCTEVHLKSVTEQLRKISRDAGMPIQGQPCFCKYAQGADSVEPMVRHLKNTYAGLQLVVVILPGKTPVYAEVKRVGDTVLGMATQCVQMKNVQRTTPQTLSNLCLKINVKLGGVNNILLPQGRPPVFQQPVIFLGADVTHPPAGDGKKPSIAAVVGSMDAHPNRYCATVRVQRHRQEIIQDLAAMVRELLIQFYKSTRFKPTRIIFYRDGVSEGQFQQVLHHELLAIREACIKLEKDYQPGITFIVVQKRHHTRLFCTDKNERVGKSGNIPAGTTVDTKITHPTEFDFYLCSHAGIQGTSRPSHYHVLWDDNRFSSDELQILTYQLCHTYVRCTRSVSIPAPAYYAHLVAFRARYHLVDKEHDSAEGSHTSGQSNGRDHQALAKAVQVHQDTLRTMYFA"
+non_human_regions <- list(c(200, 217)) 
+mutated_positions <- c(30, 132, 687, 722, 850) 
+junctions <- c() 
+```
+
+Generating only peptides containing non-native residues
+```{r}
+result <- generate_nonNative_peptides(sequence, non_human_regions, mutated_positions, junctions, min_len = 15)
+print(result)
+```
+
+Formatting results into a Maria compatable dataframe and exporting for processing
+```{r}
+input_template <- read.table(paste0(filePath,"/MARIA_Input_Template.txt"), header = TRUE, sep = "\t", stringsAsFactors = FALSE,check.names = FALSE)
+                             
+df_mutantInput <- data.frame(rep(input_template$Allele1[1],nrow(result)),rep(input_template$`Allele2 (Same as Allele1 if analyzing a single allele)`[1],nrow(result)),result[,5], result[,1], rep("",nrow(result)))
+
+names(df_mutantInput) <- names(input_template)
+
+write.table(df_mutantInput, paste0(filePath,"/ALTER4_Maria_Input.txt"), sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+From here, MARIA should be run on the outputted text file containing non-native peptides
+
+Loading in MARIA output file for further analysis and filtering for only peptides that exceeded positive presenter threshold:
+```{r}
+df_Results <- fread(paste0(filePath, "/ALTER4_MARIA_Input.txt.output.txt"), sep = "\t")
+
+df_Hits <- df_Results %>% filter(`Positive presenters`>0)
+```
+
+Creating new varient regions with point mutations in areas that are predicted to generate presented peptides
+```{r}
+newVarientList <- silence_immunogenic_peptides(sequence,
+                                   peptides = df_Hits$`Peptide Sequence`,
+                                   nonhuman_regions = non_human_regions,
+                                   mutated_positions = mutated_positions,
+                                   junctions = junctions,
+                                   output_cap = NULL,
+                                   return_debug = FALSE)
+```
+
+Generating a new list of peptides from each possible mutant region (writes to disk to avoid heavy RAM usage)
+```{r}
+generate_peptides_from_list_parallel_write_live(newVarientList$context_sequence,min_len = 15, output_file = paste0(filePath,"/ALTER4_Mutant_Peptides.tsv"))
+```
+
+Reads mutant peptide list and formats for MARIA input
+```{r}
+mutantPeptides <- fread(paste0(filePath,"/ALTER4_Mutant_Peptides.tsv"), sep = "\t")
+
+newVarientList <- data.frame(rep(input_template$Allele1[1],nrow(mutantPeptides)),rep(input_template$`Allele2 (Same as Allele1 if analyzing a single allele)`[1],nrow(mutantPeptides)),mutantPeptides[,5], mutantPeptides[,1], rep("",nrow(mutantPeptides)))
+
+names(newVarientList) <- names(input_template)
+```
+
+Writes new mutant peptide list to MARIA compatable input
+```{r}
+write.table(newVarientList, paste0(filePath,"/ALTER4_Mutant_Peptides_MARIA_Input",".txt"), sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+
+If running locally MARIA locally, it is highly advised to use "split_MARIA_input.py"
+to reduced the size of each job submitted to MARIA for prediction. The output
+chunks can then be recombined, as shown below:
+```{r}
+df_mutsequence_output <- combine_chunked_outputs(
+  basename = "ALTER4_MV1",
+  folder_path = #Fill in file path to your combined chunk directory
+)
+```
+All mutant sequences are processed to filter for mutations that lower (or 
+eliminate) predicted peptide presentation. 
+```{r}
+df_mutsequence_count <- count_immunogenic_per_sequence(df_mutsequence_output)
+silence_output <- append_immunogenic_counts(newVarientList, df_mutsequence_count)
+silence_winners <- filter_lowest_immunogenic_mutations(silence_output, collect = FALSE)
+
+print(silence_winners)
+```
+
+The winning mutations can then be applied to the original sequence and the
+pipeline re-run, if all desired presented peptides have not yet been eliminated.
+```{r}
+de_immunized_sequence <- apply_mutations_from_filtered_df(sequence, silence_winners, mutated_positions)
+```
+
+Maria prediction is re-run on the updated sequence to show no peptides are
+predicted to be presented!
+```{r}
+sequenceV2 <- de_immunized_sequence$mutated_sequence
+non_human_regions <- list(c(200, 217)) 
+mutated_positions <- de_immunized_sequence$updated_mutated_positions
+junctions <- c() 
+
+resultV2 <- generate_nonNative_peptides(sequenceV2, non_human_regions, mutated_positions, junctions, min_len = 15)
+
+df_mutantInput <- data.frame(rep(input_template$Allele1[1],nrow(resultV2)),rep(input_template$`Allele2 (Same as Allele1 if analyzing a single allele)`[1],nrow(resultV2)),resultV2[,5], resultV2[,1], rep("",nrow(resultV2)))
+
+names(df_mutantInput) <- names(input_template)
+
+write.table(df_mutantInput, paste0(filePath,"/ALTER4_Maria_InputV2.txt"), sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+```{r}
+df_ResultsV2 <- fread(paste0(filePath, "/ALTER4_MARIA_InputV2.txt.output.txt"), sep = "\t")
+
+df_HitsV2 <- df_ResultsV2 %>% filter(`Positive presenters`>0)
+
+print(df_HitsV2)
+```
+
+As expected, the new de-immunogenized construct has only one peptide above the cutoff threshold. If needed, the updated sequence can
+be run through the pipeline again to eliminate this lingering source of immunogenicity
+```{r}
+ALTER4M_Comparison_Plot <- dataCollect(list(df_Results, df_ResultsV2), c(1,2), c("Alter-4M_Linker","Alter-4M_ALL"))
+plot_immunogenic(ALTER4M_Comparison_Plot)
+```
+
