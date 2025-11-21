@@ -1,0 +1,2 @@
+# Tutorial Workflow
+See ALTER-code/5_tutorial-workflows/2_MARIA_Pipeline for information on how to use the accompanying code.
