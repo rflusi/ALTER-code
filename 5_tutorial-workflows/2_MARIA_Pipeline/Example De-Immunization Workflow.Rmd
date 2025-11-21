@@ -104,8 +104,8 @@ pipeline re-run, if all desired presented peptides have not yet been eliminated.
 de_immunized_sequence <- apply_mutations_from_filtered_df(sequence, silence_winners, mutated_positions)
 ```
 
-Maria prediction is re-run on the updated sequence to show no peptides are
-predicted to be presented!
+Maria prediction is re-run on the updated sequence to show reduced peptide presentation.
+
 ```{r}
 sequenceV2 <- de_immunized_sequence$mutated_sequence
 non_human_regions <- list(c(200, 217)) 
@@ -135,4 +135,5 @@ be run through the pipeline again to eliminate this lingering source of immunoge
 ALTER4M_Comparison_Plot <- dataCollect(list(df_Results, df_ResultsV2), c(1,2), c("Alter-4M_Linker","Alter-4M_ALL"))
 plot_immunogenic(ALTER4M_Comparison_Plot)
 ```
+
 
