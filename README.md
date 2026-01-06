@@ -11,12 +11,15 @@ Jupyter and Rmd files are uploaded with all outputs cleared, example outputs are
 
 ## Dependencies
 
-Unless otherwise indicated, code has only been tested with the dependency versions given in the following tables. For RNAseq analysis the code was run on an M4 MacBook Pro with the MacOS Sequoia operating system.
+Unless otherwise indicated, code has only been tested with the dependency versions given in the following tables. For RNAseq analysis the code was run on an M4 MacBook Pro with the macOS Sequoia. Dependencies were installed into dedicated Conda environments using Conda, including transitive dependencies. All installations could be completed in under half an hour. Running through the demo with the provided data may take 1 hour.
 
 ### Software
 
 |Name|Version|
 |:--:|:--:|
+|python|3.12|
+|ipykernel|7.1.0|
+|R|4.3|
 |samtools|1.16.1|
 |bcftools|1.16|
 
