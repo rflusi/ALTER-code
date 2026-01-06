@@ -9,6 +9,55 @@ Jupyter and Rmd files are uploaded with all outputs cleared, example outputs are
 
 # RNAseq Analysis
 
+## Dependencies
+
+Unless otherwise indicated, code has only been tested with the dependency versions given in the following tables. For RNAseq analysis the code was run on an M4 MacBook Pro with the MacOS Sequoia operating system.
+
+### Software
+
+|Name|Version|
+|:--:|:--:|
+|samtools|1.16.1|
+|bcftools|1.16|
+
+### Python Libraries
+
+|Name|Version|
+|:--:|:--:|
+|tqdm|4.67.1|
+|biopython|1.85|
+|pysam|0.23.0|
+|pandas|2.2.3|
+|numpy|1.26.4|
+
+### R Packages
+
+|Name|Version|
+|:--:|:--:|
+|DESeq2|1.46.0|
+|tximport|1.34.0|
+|dplyr|1.1.4|
+|ggplot2|3.5.2|
+|pheatmap|1.0.13|
+|RColorBrewer|1.1.3|
+|PoiClaClu|1.0.2.1|
+|glmpca|0.2.0|
+|apeglm|1.28.0|
+|ggrepel|0.9.6|
+|dplyr|1.1.4|
+|tidyr|1.3.1|
+|purrr|1.1.0|
+|svglite|2.2.1|
+|fgsea|1.32.2|
+|data.table|1.17.8|
+|msigdbr|25.1.1|
+|org.Hs.eg.db|3.20.0|
+|clusterProfiler|4.14.0|
+|AnnotationDbi|1.68.0|
+|enrichplot|1.26.1|
+|biomaRt|2.62.0|
+|ggrepel|0.9.6|
+
 ## Reference Data
 
 Genomic references were all based on GENCODE Human v48:
