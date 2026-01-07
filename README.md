@@ -169,7 +169,7 @@ See ALTER-code/5_tutorial-workflows/1_degs-off-tgts/TUTORIAL_READ_ME.md
 
 ## Dependencies
 
-Unless otherwise indicated, code has only been tested with the dependency versions given in the following tables. Analysis code was run on a Microsoft Surface Pro 2 with Windows 10. Python dependencies were installed into dedicated Conda environments using Conda, including transitive dependencies. All installations could be completed in under half an hour. Running through the demo with the provided data may take 48 hours on a convential laptop or as little as 4 hours on a dedicated computing cluster.
+Unless otherwise indicated, code has only been tested with the dependency versions given in the following tables. Analysis code was run on a Microsoft Surface Pro 2 with Windows 10. Python dependencies were installed into dedicated Conda environments using Conda, including transitive dependencies. All installations could be completed in under half an hour. Running through the demo with the provided data may take 36 hours on a convential laptop or as little as 4 hours on a dedicated computing cluster.
 
 ### Software
 
