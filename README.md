@@ -164,3 +164,53 @@ The frequency of off-targets in DEGs was calculated with 10_DEG-edit-rate.py.
 # Tutorial Workflow
 
 See ALTER-code/5_tutorial-workflows/1_degs-off-tgts/TUTORIAL_READ_ME.md
+
+# MARIA Analysis
+
+## Dependencies
+
+Unless otherwise indicated, code has only been tested with the dependency versions given in the following tables. Analysis code was run on a Microsoft Surface Pro 2 with Windows 10. Python dependencies were installed into dedicated Conda environments using Conda, including transitive dependencies. All installations could be completed in under half an hour. Running through the demo with the provided data may take 48 hours on a convential laptop or as little as 4 hours on a dedicated computing cluster.
+
+### Software
+
+|Name|Version|
+|:--:|:--:|
+|R|4.3.2|
+|Python|2.7.15|
+|MARIA|2.20.2019|
+
+### R Packages
+
+|Name|Version|
+|:--:|:--:|
+|ggprism|1.0.5|
+|ggplot2|3.5.1|
+|progress|1.2.3|
+|dplyr|1.1.4|
+|data.table|1.16.2|
+
+### Python Libraries
+
+| Name | Version |
+|:--:|:--:|
+| certifi | 2019.11.28 |
+| Cython | 0.29.15 |
+| functools32 | 3.2.3.post2 |
+| future | 0.18.2 |
+| h5py | 2.9.0 |
+| Keras | 2.0.3 |
+| matplotlib | 2.2.3 |
+| mkl-fft | 1.1.0 |
+| mkl-service | 2.3.0 |
+| pandas | 0.24.2 |
+| pygpu | 0.7.6 |
+| pyreadline | 2.1 |
+| python-Levenshtein | 0.12.0 |
+| tornado | 5.1.1 |
+| unittest2 | 1.1.0 |
+| wheel | 0.37.1 |
+| wincertstore | 0.2 |
+
+# Tutorial Workflow
+A short description of the workflow can be found in 5_tutorial-workflows/2_MARIA_Pipeline/README.md
+Please see the accompanying tutorial document for step by step instructions in 5_tutorial-workflows/2_MARIA_Pipeline/Example De-Immunization Workflow.Rmd
