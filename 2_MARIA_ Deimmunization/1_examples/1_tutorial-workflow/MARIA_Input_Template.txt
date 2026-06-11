@@ -1,0 +1,2 @@
+Allele1	Allele2 (Same as Allele1 if analyzing a single allele)	Gene Symbol	Peptide Sequence	TPM (Optional)
+HLA-DRB1*01:01	HLA-DRB1*01:01			1000

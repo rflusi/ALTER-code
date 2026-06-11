@@ -1,0 +1,28 @@
+# snakemake directory - fill with absolute path to ALTER-code/1_rnaseq-final-analysis directory
+smk_dir: ''
+
+# experiment name: local path to experiment directory
+experiment_dict:
+  R098.2: '1_R098.2'
+  CURE: '2_CURE'
+
+# reference genome directory name, stored in snakemake dir ref subdir
+ref_dir_name: 'GENCODEv48-ALTER-CURE'
+
+# offsets for seq consensus analysis
+seq_consensus_offsets: [10]
+
+# offsets for mirna analysis
+mirna_offsets: [100]
+
+# deseq log2(fold change) and padj cutoff for DEGs
+deseq_fc_cutoff: 1
+deseq_padj_cutoff: 0.01 
+
+# GO analysis padj and q score cutoffs
+go_padj_cutoff: 0.01
+go_q_cutoff: 0.1
+
+# seq motifs for random selection of mirna alignment control samples
+# NOTE: if you change this you need to adjust the random_seq_motifs dictionary in off-tgt-mirna-align.py and prep-expressed-transcripts.py
+random_seq_motifs: ['N','C','TC','TCG']

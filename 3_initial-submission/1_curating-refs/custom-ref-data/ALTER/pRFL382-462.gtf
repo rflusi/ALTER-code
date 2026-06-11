@@ -1,0 +1,6 @@
+pRFL382_ALTER-4-PPIB-14L8	custom	gene	1	7471	.	-	.	gene_name "pRFL382_ALTER-4-PPIB-14L8"; gene_id "pRFL382_ALTER-4-PPIB-14L8"
+pRFL382_ALTER-4-PPIB-14L8	custom	transcript	1281	5078	.	-	.	gene_name "pRFL382_ALTER-4-PPIB-14L8"; gene_id "pRFL382_ALTER-4-PPIB-14L8"; transcript_id "pRFL382_ALTER-4-PPIB-14L8.1"
+pRFL382_ALTER-4-PPIB-14L8	custom	exon	1281	5078	.	-	.	gene_name "pRFL382_ALTER-4-PPIB-14L8"; gene_id "pRFL382_ALTER-4-PPIB-14L8"; transcript_id "pRFL382_ALTER-4-PPIB-14L8.1"; exon_id "pRFL382_ALTER-4-PPIB-14L8.1"; exon_number 1
+pRFL462_transfection-control	custom	gene	1	4134	.	-	.	gene_name "pRFL462_transfection-control"; gene_id "pRFL462_transfection-control"
+pRFL462_transfection-control	custom	transcript	662	1741	.	-	.	gene_name "pRFL462_transfection-control"; gene_id "pRFL462_transfection-control"; transcript_id "pRFL462_transfection-control.1"
+pRFL462_transfection-control	custom	exon	662	1741	.	-	.	gene_name "pRFL462_transfection-control"; gene_id "pRFL462_transfection-control"; transcript_id "pRFL462_transfection-control.1"; exon_id "pRFL462_transfection-control.1"; exon_number 1

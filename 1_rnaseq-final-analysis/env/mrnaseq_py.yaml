@@ -1,0 +1,17 @@
+name: mrnaseq_py
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.12.13
+  - biopython=1.85
+  - numpy=2.4.3
+  - pandas=2.3.3
+  - pandarallel=1.6.5
+  - pysam=0.23.0
+  - tabulate=0.10.0
+  - tqdm=4.67.1
+  - viennarna=2.7.2
+  - pyarrow=24.0.0
+  - openpyxl=3.1.5

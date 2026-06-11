@@ -1,0 +1,129 @@
+import os
+import pandas as pd
+
+# Config
+configfile: 'config.yaml'
+
+# sorted list of experiment names
+EXPERIMENT_NAMES = sorted(config['experiment_dict'].keys())
+
+# directories
+SMK_DIR = config['smk_dir']
+PROJ_DIR = os.path.join(SMK_DIR, '1_example-data') 
+REF_DIR = os.path.join(SMK_DIR, '2_reference-files', config['ref_dir_name'])
+REF_DB_DIR = os.path.join(SMK_DIR, '2_reference-files', 'reference-dbs')
+
+EXP_DIR_NAMES_DICT = {e:config['experiment_dict'][e] for e in EXPERIMENT_NAMES}
+RESOURCE_DIR = os.path.join(PROJ_DIR, f'{len(EXPERIMENT_NAMES)+1}_analysis-resources')
+AGG_RESULTS_DIR = os.path.join(PROJ_DIR, f'{len(EXPERIMENT_NAMES)+2}_aggregate_results')
+
+# sample information
+REF_GENOME_NAME = config['ref_dir_name']
+
+SAMPLE_MAP_DICT = {e:pd.read_csv(os.path.join(PROJ_DIR, EXP_DIR_NAMES_DICT[e], 'sample-map.csv')) for e in EXPERIMENT_NAMES}
+CONDITIONS_DICT = {e:sorted(SAMPLE_MAP_DICT[e]['condition'].unique()) for e in EXPERIMENT_NAMES}
+WT_CONDITIONS_DICT = {e:sorted(SAMPLE_MAP_DICT[e]['wt_condition'].unique()) for e in EXPERIMENT_NAMES}
+NON_WT_CONDITIONS_DICT = {
+    e:sorted(SAMPLE_MAP_DICT[e].loc[~SAMPLE_MAP_DICT[e]['condition'].isin(WT_CONDITIONS_DICT[e]), 'condition'].unique())
+    for e in EXPERIMENT_NAMES
+    }
+
+TGT_SNPS_DNA = {}
+ALL_TGT_SNPS = set()
+for e in EXPERIMENT_NAMES:
+    SAMPLE_MAP = SAMPLE_MAP_DICT[e]
+    TGT_SNP_STRS = SAMPLE_MAP['snp'].dropna().unique()
+    TGT_SNP_SERIES = pd.Series(TGT_SNP_STRS).apply(lambda x: x.split(',')).sum()
+    TGT_SNP_LIST = sorted(pd.Series(TGT_SNP_SERIES).unique())
+    TGT_SNP_LIST = [snp.upper() for snp in TGT_SNP_LIST]
+    TGT_DNA_SNP_LIST = [snp.replace('U', 'T') for snp in TGT_SNP_LIST]
+    TGT_SNPS_DNA[e] = TGT_DNA_SNP_LIST
+    for snp in TGT_DNA_SNP_LIST:
+        ALL_TGT_SNPS.add(snp)
+ALL_TGT_SNPS = sorted(ALL_TGT_SNPS)
+
+TGT_EDIT_DICT = {}
+for e in EXPERIMENT_NAMES:
+    SAMPLE_MAP = SAMPLE_MAP_DICT[e]
+    TGT_EDITS = SAMPLE_MAP[['tgt_edit_chrom', 'tgt_edit_pos']].dropna(how='all')
+    TGT_EDITS = TGT_EDITS.drop_duplicates()
+    TGT_EDITS = list(TGT_EDITS.to_records(index=False))
+    for edit_idx, edit in enumerate(TGT_EDITS):
+        chrom = edit[0]
+        pos = int(edit[1])
+        TGT_EDITS[edit_idx] = f'{chrom},{pos}'
+    TGT_EDIT_DICT[e] = TGT_EDITS
+
+# Analysis parameters
+RANDOM_SEQ_MOTIFS   = config['random_seq_motifs']
+CONSENSUS_OFFSETS   = config['seq_consensus_offsets']
+MIRNA_OFFSETS       = config['mirna_offsets']
+DESEQ_FC_CUTOFF     = config['deseq_fc_cutoff']
+DESEQ_PADJ_CUTOFF   = config['deseq_padj_cutoff']
+GO_PADJ_CUTOFF      = config['go_padj_cutoff']
+GO_Q_CUTOFF         = config['go_q_cutoff']
+
+# Wildcard constraints — prevent greedy matching across rule output patterns that
+# share a common prefix (e.g. transcripts.{snp}.parquet vs transcripts.{snp}.mirna.o{mirna_offset}.parquet)
+wildcard_constraints:
+    snp           = '[A-Z]+',
+    mirna_offset  = '[0-9]+'
+
+# Include rules
+include: 'rules/1_off-tgt-analysis.smk'
+include: 'rules/2_prep-dbs.smk'
+include: 'rules/3_deg.smk'
+
+# Target rule
+rule all:
+    input:
+        # variant annotation
+        [
+            f'{PROJ_DIR}/{exp_dir}/4_variants/{experiment}.variants.annotated.parquet' 
+            for experiment, exp_dir in EXP_DIR_NAMES_DICT.items()
+        ],
+        # off target hits
+        [
+            f'{PROJ_DIR}/{EXP_DIR_NAMES_DICT[experiment]}/4_variants/hit-id/{experiment}.overlap.{snp}.parquet' 
+            for experiment in EXPERIMENT_NAMES for snp in ALL_TGT_SNPS
+        ],
+        # transcript lookups
+        expand(
+            '{proj_dir}/{exp_dir}/4_variants/transcript-align/transcript-id-to-contig.pkl.gz',
+            proj_dir=PROJ_DIR, exp_dir=[EXP_DIR_NAMES_DICT[e] for e in EXPERIMENT_NAMES]
+        ),
+        # alignment of off target hits to transcripts
+        [
+            f'{PROJ_DIR}/{EXP_DIR_NAMES_DICT[experiment]}/4_variants/transcript-align/{experiment}.transcripts.{snp}.parquet'
+            for experiment in EXPERIMENT_NAMES for snp in ALL_TGT_SNPS
+        ],
+        # seq consensus
+        [
+            f'{PROJ_DIR}/{EXP_DIR_NAMES_DICT[experiment]}/4_variants/{experiment}.transcripts.{snp}.o{seq_consensus_offset}-consensus.xlsx'
+            for experiment in EXPERIMENT_NAMES 
+            for snp in ALL_TGT_SNPS
+            for seq_consensus_offset in CONSENSUS_OFFSETS
+        ],
+        # mirtarbase frequency in off-targets
+        [
+            f'{PROJ_DIR}/{EXP_DIR_NAMES_DICT[experiment]}/4_variants/hit-id/{experiment}.miRTar-freq.{snp}.xlsx'
+            for experiment in EXPERIMENT_NAMES for snp in ALL_TGT_SNPS
+        ],
+        # prepped expressed transcript data
+        f'{RESOURCE_DIR}/expr-transcripts/{'.'.join(EXPERIMENT_NAMES)}.transcripts.expressed.parquet',
+        # mirna alignment
+        [
+            f'{AGG_RESULTS_DIR}/{'.'.join(EXPERIMENT_NAMES)}.mirna-align.{snp}.o{mirna_offset}.pos.xlsx'
+            for snp in ALL_TGT_SNPS
+            for mirna_offset in MIRNA_OFFSETS
+        ],
+        # deg analysis
+        [
+            f'{PROJ_DIR}/{EXP_DIR_NAMES_DICT[experiment]}/5_expression/deseq2/3_results/{experiment}.degs.mirna-freq.xlsx'
+            for experiment in EXPERIMENT_NAMES
+        ],
+        [
+            f'{PROJ_DIR}/{EXP_DIR_NAMES_DICT[experiment]}/5_expression/deseq2/3_results/{experiment}.degs.off-tgt-freq.{snp}.xlsx'
+            for experiment in EXPERIMENT_NAMES
+            for snp in ALL_TGT_SNPS
+        ],

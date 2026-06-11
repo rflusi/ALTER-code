@@ -1,0 +1,4 @@
+.DS_Store
+.snakemake/
+logs/
+/1_rnaseq-final-analysis/2_reference-files/GENCODEv48-ALTER-CURE/
